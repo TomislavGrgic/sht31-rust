@@ -40,12 +40,16 @@ fn main() -> ! {
     loop {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
-        println!("Status ---> {:?}", read_temp(&mut i2c));
+        
+        match read_temp(&mut i2c) {
+            Ok((temp, hum)) => println!("Temperature: {},   Humidity: {}", temp, hum),
+            Err(err) => println!("Error: {}", err)
+        }
     }
 }
 
 
-fn read_temp(i2c: &mut master::I2c<impl esp_hal::DriverMode>) -> Result<f32, master::Error> {
+fn read_temp(i2c: &mut master::I2c<impl esp_hal::DriverMode>) -> Result<(f32, f32), master::Error> {
     i2c.write(0x44, &[0x24, 0x0B])?;
     
     let delay_start = Instant::now();
@@ -57,5 +61,14 @@ fn read_temp(i2c: &mut master::I2c<impl esp_hal::DriverMode>) -> Result<f32, mas
 
     println!("array {:?}", read_buffer);
 
-    Ok(32.5)
+    let temp_raw= ( (read_buffer[0] as u16) << 8 ) | (read_buffer[1] as u16);
+    let temp_crc = read_buffer[2];
+
+    let hum_raw = ( (read_buffer[3] as u16 ) << 8 ) | (read_buffer[4] as u16);
+    let hum_crc = read_buffer[5];
+
+    let temperature = 0.00267033 * (temp_raw as f32) - 45.0;
+    let humidity = 0.0015259 * (hum_raw as f32);
+
+    Ok((temperature, humidity))
 }
