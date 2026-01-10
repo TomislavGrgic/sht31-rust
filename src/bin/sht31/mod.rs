@@ -2,18 +2,100 @@ use esp_hal::i2c::master;
 use esp_hal::time::{Duration, Instant};
 use esp_println::println;
 
-
+#[derive(Copy, Clone)]
 pub enum ClockStretch {
-    Streching,
-    NoStreching
+    Enable,
+    Disable
 }
 
 
+impl ClockStretch {
+    pub fn msb(self) -> u8{
+        match self {
+            ClockStretch::Enable => 0x2C,
+            ClockStretch::Disable => 0x24,
+        }
+    }
+}
+
+
+impl RepeatabilityContext for ClockStretch {
+    fn lsb(self, repeatability: Repeatability) -> u8{
+        match (self, repeatability) {
+            (ClockStretch::Enable, Repeatability::High) => 0x06,
+            (ClockStretch::Enable, Repeatability::Medium) => 0x0D, 
+            (ClockStretch::Enable, Repeatability::Low) => 0x10,
+            
+            (ClockStretch::Disable, Repeatability::High) => 0x00,
+            (ClockStretch::Disable, Repeatability::Medium) => 0x0B, 
+            (ClockStretch::Disable, Repeatability::Low) => 0x16, 
+        }
+    }
+}
+
+
+pub enum MeasurmentsPerSecond {
+    None,
+    Half,
+    One,
+    Two,
+    Four,
+    Ten
+}
+
+
+impl MeasurmentsPerSecond {
+    pub fn msb(self) -> u8 {
+        match self {
+            MeasurmentsPerSecond::Half => 0x20,
+            MeasurmentsPerSecond::One => 0x21,
+            MeasurmentsPerSecond::Two => 0x22,
+            MeasurmentsPerSecond::Four => 0x23,
+            MeasurmentsPerSecond::Ten => 0x27,
+            MeasurmentsPerSecond::None => todo!(),
+        }
+    }
+}
+
+
+impl RepeatabilityContext for MeasurmentsPerSecond {
+    fn lsb(self, repeatability: Repeatability) -> u8{
+        match (self, repeatability) {
+            (MeasurmentsPerSecond::Half, Repeatability::High) => 0x32,
+            (MeasurmentsPerSecond::Half, Repeatability::Medium) => 0x24, 
+            (MeasurmentsPerSecond::Half, Repeatability::Low) => 0x2F,
+            
+            (MeasurmentsPerSecond::One, Repeatability::High) => 0x30,
+            (MeasurmentsPerSecond::One, Repeatability::Medium) => 0x26, 
+            (MeasurmentsPerSecond::One, Repeatability::Low) => 0x2D,
+
+            (MeasurmentsPerSecond::Two, Repeatability::High) => 0x36,
+            (MeasurmentsPerSecond::Two, Repeatability::Medium) => 0x20, 
+            (MeasurmentsPerSecond::Two, Repeatability::Low) => 0x2B,
+
+            (MeasurmentsPerSecond::Four, Repeatability::High) => 0x34,
+            (MeasurmentsPerSecond::Four, Repeatability::Medium) => 0x22, 
+            (MeasurmentsPerSecond::Four, Repeatability::Low) => 0x29,
+
+            (MeasurmentsPerSecond::Ten, Repeatability::High) => 0x37,
+            (MeasurmentsPerSecond::Ten, Repeatability::Medium) => 0x21, 
+            (MeasurmentsPerSecond::Ten, Repeatability::Low) => 0x2A,
+
+            (MeasurmentsPerSecond::None, _) => todo!(),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 pub enum Repeatability {
     High,
     Medium,
     Low
-}   
+} 
+
+pub trait RepeatabilityContext {
+    fn lsb(self, rep: Repeatability) -> u8;
+}
 
 
 struct SHT31RawData {
@@ -31,6 +113,7 @@ where Dm: esp_hal::DriverMode
     address: u8,
     clock_strech: ClockStretch,
     repeatability: Repeatability,
+    msp: MeasurmentsPerSecond,
     crc: bool,
 }
 
@@ -42,8 +125,9 @@ where Dm: esp_hal::DriverMode
         Self{
             i2c: i2c,
             address: address,
-            clock_strech: ClockStretch::NoStreching,
+            clock_strech: ClockStretch::Disable,
             repeatability: Repeatability::Medium,
+            msp: MeasurmentsPerSecond::None,
             crc: false,
         }
     }
@@ -61,8 +145,18 @@ where Dm: esp_hal::DriverMode
     }
 
 
+    pub fn with_msp(&mut self, msp: MeasurmentsPerSecond) -> &mut Self {
+        self.msp = msp;
+        self
+    }
+
+
     pub fn get_data(&mut self) -> Result<(f32, f32), master::Error> {
-        let read_type = data_command(&self.clock_strech, &self.repeatability);
+        let read_type = [
+            self.clock_strech.msb(),
+            self.clock_strech.lsb(self.repeatability),
+        ];
+
         let raw_data = self.get_raw_data(read_type)?;
 
         //Conversion fromulas
@@ -131,24 +225,4 @@ fn crc8(init_crc: u8, poly: u8, data: u16) -> u8 {
     }
 
     crc
-}
-
-
-fn data_command(clock_mode: &ClockStretch, repeatability: &Repeatability) -> [u8; 2] {
-    let msb = match clock_mode {
-        ClockStretch::Streching => 0x2C,
-        ClockStretch::NoStreching => 0x24,
-    };
-
-    let lsb = match (clock_mode, repeatability) {
-        (ClockStretch::Streching, Repeatability::High) => 0x06,
-        (ClockStretch::Streching, Repeatability::Medium) => 0x0D, 
-        (ClockStretch::Streching, Repeatability::Low) => 0x10,
-        
-        (ClockStretch::NoStreching, Repeatability::High) => 0x00,
-        (ClockStretch::NoStreching, Repeatability::Medium) => 0x0B, 
-        (ClockStretch::NoStreching, Repeatability::Low) => 0x16, 
-    };
-
-    [msb, lsb]
 }
