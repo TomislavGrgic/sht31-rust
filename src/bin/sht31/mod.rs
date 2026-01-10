@@ -10,7 +10,7 @@ pub enum ClockStretch {
 
 
 impl ClockStretch {
-    pub fn msb(self) -> u8{
+    pub fn msb(self) -> u8 {
         match self {
             ClockStretch::Enable => 0x2C,
             ClockStretch::Disable => 0x24,
@@ -151,7 +151,17 @@ where Dm: esp_hal::DriverMode
     }
 
 
-    pub fn get_data(&mut self) -> Result<(f32, f32), master::Error> {
+    pub fn soft_reset(&mut self) -> Result<&mut Self, master::Error> {
+        let msb = 0x30;
+        let lsb = 0xA2;
+
+        self.i2c.write(self.address, &[msb, lsb])?;
+
+        Ok(self)
+    }
+
+
+    pub fn one_shot_data(&mut self) -> Result<(f32, f32), master::Error> {
         let read_type = [
             self.clock_strech.msb(),
             self.clock_strech.lsb(self.repeatability),
@@ -166,6 +176,7 @@ where Dm: esp_hal::DriverMode
         Ok((temperature, humidity))
         
     }
+
 
     fn get_raw_data(&mut self, command: [u8; 2]) -> Result<SHT31RawData, master::Error> {
         self.i2c.write(self.address, &command)?;

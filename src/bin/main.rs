@@ -47,7 +47,7 @@ fn main() -> ! {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
         
-        match sht.get_data() {
+        match sht.one_shot_data() {
             Ok((temp, hum)) => println!("Temperature: {},   Humidity: {}", temp, hum),
             Err(err) => println!("Error: {}", err)
         }
