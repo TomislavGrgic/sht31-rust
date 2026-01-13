@@ -34,6 +34,7 @@ impl RepeatabilityContext for ClockStretch {
 }
 
 
+#[derive(Copy, Clone)]
 pub enum MeasurmentsPerSecond {
     None,
     Half,
@@ -115,6 +116,7 @@ where Dm: esp_hal::DriverMode
     repeatability: Repeatability,
     msp: MeasurmentsPerSecond,
     crc: bool,
+
 }
 
 
@@ -127,7 +129,7 @@ where Dm: esp_hal::DriverMode
             address: address,
             clock_strech: ClockStretch::Disable,
             repeatability: Repeatability::Medium,
-            msp: MeasurmentsPerSecond::None,
+            mps: MeasurmentsPerSecond::None,
             crc: false,
         }
     }
@@ -148,6 +150,27 @@ where Dm: esp_hal::DriverMode
     pub fn with_msp(&mut self, msp: MeasurmentsPerSecond) -> &mut Self {
         self.msp = msp;
         self
+    }
+
+    pub fn enable_mps(&mut self) -> Result<&mut Self, master::Error> {
+        let mps_config = [
+            self.mps.msb(),
+            self.mps.lsb(self.repeatability),
+        ];
+
+        self.i2c.write(self.address, &mps_config)?;
+        Ok(self)
+    }
+
+
+    pub fn disable_mps(&mut self) -> Result<&mut Self, master::Error> {
+        let stop_mps = [
+            0x30,
+            0x93,
+        ];
+
+        self.i2c.write(self.address, &stop_mps)?;
+        Ok(self)
     }
 
 
@@ -207,7 +230,7 @@ where Dm: esp_hal::DriverMode
         Ok (data)
     }
 
-
+ 
     //TODO: make it error based return
     fn is_crc_valid(&mut self, data: &SHT31RawData) -> bool {
         if data.temperature_crc != crc8(0xFF, 0x31, data.temperature) {
